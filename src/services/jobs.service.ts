@@ -21,3 +21,34 @@ export async function getJobById(id: string): Promise<Job | null> {
     );
     return result.rows[0] ?? null;
 }
+
+export async function claimNextPendingJob(): Promise<Job | null> {
+    const result = await pool.query<Job>(
+        `UPDATE jobs
+         SET status = 'processing', updated_at = now()
+         WHERE id = (
+         SELECT id FROM jobs
+         WHERE status = 'pending'
+         ORDER BY created_at ASC
+         FOR UPDATE SKIP LOCKED
+       LIMIT 1
+     )
+     RETURNING *`
+    );
+    return result.rows[0] ?? null;
+
+}
+
+export async function markJobCompleted(id: string): Promise<void> {
+    await pool.query(
+        `UPDATE jobs SET status = 'completed', updated_at = now() WHERE id = $1`,
+        [id]
+    );
+}
+
+export async function markJobFailed(id: string): Promise<void> {
+    await pool.query(
+        `UPDATE jobs SET status = 'failed', updated_at = now() WHERE id = $1`,
+        [id]
+    );
+}

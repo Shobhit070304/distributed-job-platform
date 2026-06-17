@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn src/server.ts",
+    "worker": "ts-node-dev --respawn src/worker.ts",
     "build": "tsc",
     "start": "node dist/server.js"
   },
