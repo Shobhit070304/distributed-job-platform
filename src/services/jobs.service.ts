@@ -7,11 +7,12 @@ export async function createJob(input: CreateJobInput): Promise<Job> {
     const { type, payload = {}, max_attempts = 3, delay_seconds, run_at } = input;
 
     // If run_at is provided, calculate available_at
-    let availableAt: Date | null = null;
+    let availableAt: Date;
     if (run_at) {
         availableAt = new Date(run_at);
-    } else if (delay_seconds !== undefined) {
-        availableAt = new Date(Date.now() + delay_seconds * 1000);
+    } else {
+        const seconds = delay_seconds ?? 0;
+        availableAt = new Date(Date.now() + seconds * 1000);
     }
 
     const result = await pool.query<Job>(
@@ -147,4 +148,49 @@ export async function discardDeadLetterJob(id: string): Promise<boolean> {
         [id]
     );
     return (result.rowCount ?? 0) > 0;
+}
+
+
+// --- Jobs List + Search ---
+export interface ListJobsOptions {
+    status?: string;
+    limit?: number;
+    offset?: number;
+}
+
+export async function listJobs(options: ListJobsOptions = {}): Promise<{ jobs: Job[]; total: number }> {
+    const limit = Math.min(options.limit ?? 20, 100);
+    const offset = options.offset ?? 0;
+
+    // Build dynamic WHERE clause safely
+    const conditions: string[] = [];
+    const filterParams: unknown[] = [];
+
+    if (options.status) {
+        filterParams.push(options.status);
+        conditions.push(`status = $${filterParams.length}`);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const dataParams = [...filterParams, limit, offset];
+    const countParams = [...filterParams];
+
+    const [dataResult, countResult] = await Promise.all([
+        pool.query<Job>(
+            `SELECT * FROM jobs ${where}
+       ORDER BY created_at DESC
+       LIMIT $${filterParams.length + 1} OFFSET $${filterParams.length + 2}`,
+            dataParams
+        ),
+        pool.query<{ count: string }>(
+            `SELECT COUNT(*) as count FROM jobs ${where}`,
+            countParams
+        ),
+    ]);
+
+    return {
+        jobs: dataResult.rows,
+        total: parseInt(countResult.rows[0].count, 10),
+    };
 }

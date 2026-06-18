@@ -18,6 +18,6 @@ export interface CreateJobInput {
     type: string;
     payload?: Record<string, unknown>;
     max_attempts?: number;
-    delay_seconds?: number;
-    run_at?: string;
+    delay_seconds?: number | null;
+    run_at?: string | null;
 }
