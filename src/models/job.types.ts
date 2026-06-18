@@ -7,6 +7,9 @@ export interface Job {
     status: JobStatus;
     attempts: number;
     max_attempts: number;
+    available_at: Date | null;
+    last_error?: string | null;
+    dead_lettered_at?: Date | null;
     created_at: Date;
     updated_at: Date;
 }

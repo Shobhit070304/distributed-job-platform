@@ -68,11 +68,11 @@ export async function handleJobFailure(job: Job, error: Error): Promise<void> {
     if (newAttempts >= job.max_attempts) {
         await pool.query(
             `UPDATE jobs
-       SET status = 'failed', attempts = $1, last_error = $2, updated_at = now()
+       SET status = 'dead_letter', attempts = $1, last_error = $2, dead_lettered_at = now(), updated_at = now()
        WHERE id = $3`,
             [newAttempts, error.message, job.id]
         );
-        console.log(`Job ${job.id} exhausted all ${job.max_attempts} attempts. Marked failed.`);
+        console.log(`Job ${job.id} exhausted all ${job.max_attempts} attempts. Marked as dead_letter.`);
         return;
     }
 
@@ -91,7 +91,60 @@ export async function handleJobFailure(job: Job, error: Error): Promise<void> {
 // For jobs that should not be retried(like invalid input)
 export async function markJobFailedTerminal(id: string, errorMessage: string): Promise<void> {
     await pool.query(
-        `UPDATE jobs SET status = 'failed', last_error = $1, updated_at = now() WHERE id = $2`,
+        `UPDATE jobs SET status = 'dead_letter', last_error = $1, dead_lettered_at = now(), updated_at = now() WHERE id = $2`,
         [errorMessage, id]
     );
+}
+
+
+// --- Dead-Letter Queue (DLQ) Management ---
+export interface DeadLetterListOptions {
+    limit?: number;
+    offset?: number;
+}
+
+export async function getDeadLetterJobs(options: DeadLetterListOptions = {}): Promise<{ jobs: Job[]; total: number }> {
+    const limit = Math.min(options.limit ?? 20, 100);
+    const offset = options.offset ?? 0;
+
+    const [dataResult, countResult] = await Promise.all([
+        pool.query<Job>(
+            `SELECT * FROM jobs
+             WHERE status = 'dead_letter'
+             ORDER BY dead_lettered_at DESC
+             LIMIT $1 OFFSET $2`,
+            [limit, offset]
+        ),
+        pool.query<{ count: string }>(
+            `SELECT COUNT(*) as count FROM jobs WHERE status = 'dead_letter'`
+        ),
+    ]);
+
+    return {
+        jobs: dataResult.rows,
+        total: parseInt(countResult.rows[0].count, 10),
+    };
+}
+
+export async function retryDeadLetterJob(id: string): Promise<Job | null> {
+    const result = await pool.query<Job>(
+        `UPDATE jobs
+     SET status = 'pending',
+         attempts = 0,
+         last_error = null,
+         available_at = now(),
+         updated_at = now()
+     WHERE id = $1 AND status = 'dead_letter'
+     RETURNING *`,
+        [id]
+    );
+    return result.rows[0] ?? null;
+}
+
+export async function discardDeadLetterJob(id: string): Promise<boolean> {
+    const result = await pool.query(
+        `DELETE FROM jobs WHERE id = $1 AND status = 'dead_letter'`,
+        [id]
+    );
+    return (result.rowCount ?? 0) > 0;
 }
