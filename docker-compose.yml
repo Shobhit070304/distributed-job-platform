@@ -55,6 +55,10 @@ services:
       DATABASE_URL: postgresql://postgres:password@postgres:5432/distributed_job_platform
       REDIS_URL: redis://redis:6379
       NODE_ENV: production
+      # How many jobs run in parallel inside this single worker container.
+      # Scale out by increasing replicas OR this number (or both).
+      WORKER_CONCURRENCY: 5
+      POLL_INTERVAL_MS: 2000
     depends_on:
       postgres:
         condition: service_healthy
