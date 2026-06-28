@@ -18,7 +18,7 @@ export async function listJobsHandler(req: Request, res: Response) {
         const limit = parseInt(req.query.limit as string) || 20;
         const offset = parseInt(req.query.offset as string) || 0;
 
-        const validStatuses = ['pending', 'processing', 'completed', 'failed', 'dead_letter'];
+        const validStatuses = ['pending', 'processing', 'completed', 'dead_letter'];
         if (status && !validStatuses.includes(status)) {
             return res.status(400).json({
                 error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`,

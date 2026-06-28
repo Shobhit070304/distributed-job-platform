@@ -9,6 +9,10 @@ export async function createJobHandler(req: Request, res: Response) {
             return res.status(400).json({ error: '"type" is required and must be a string' });
         }
 
+        if (max_attempts !== undefined && (typeof max_attempts !== 'number' || !Number.isInteger(max_attempts) || max_attempts < 1)) {
+            return res.status(400).json({ error: 'max_attempts must be a positive integer greater than or equal to 1' });
+        }
+
         if (delay_seconds !== undefined && run_at !== undefined) {
             return res.status(400).json({ error: 'Provide either delay_seconds or run_at' });
         }

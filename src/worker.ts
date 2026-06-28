@@ -148,12 +148,20 @@ async function shutdown(signal: string): Promise<void> {
         reaperTimer = null;
     }
 
+    // Set a force-exit timeout (e.g. 10 seconds) to prevent infinite hanging
+    const FORCE_SHUTDOWN_TIMEOUT_MS = 10_000;
+    const forceShutdownTimer = setTimeout(() => {
+        console.error(`[worker] Force shutdown: ${activeJobs.size} job(s) were still active after ${FORCE_SHUTDOWN_TIMEOUT_MS / 1000}s. Active job IDs:`, Array.from(activeJobs));
+        process.exit(1);
+    }, FORCE_SHUTDOWN_TIMEOUT_MS);
+
     // Wait until every active job has called activeJobs.delete() in its finally block.
     while (activeJobs.size > 0) {
         console.log(`[worker] Draining... ${activeJobs.size} job(s) still running`);
         await new Promise((r) => setTimeout(r, 200));
     }
 
+    clearTimeout(forceShutdownTimer);
     await pool.end();
     console.log('[worker] All jobs drained. Shut down cleanly.');
     process.exit(0);
