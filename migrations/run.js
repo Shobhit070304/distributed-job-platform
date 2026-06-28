@@ -6,7 +6,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 // UPDATE THIS VARIABLE WITH THE MIGRATION FILE YOU WANT TO RUN
-const MIGRATION_FILE = '003_add_dead_letter_columns.sql';
+const MIGRATION_FILE = '004_add_started_at.sql';
 
 async function runMigration() {
     const filePath = path.join(__dirname, MIGRATION_FILE);

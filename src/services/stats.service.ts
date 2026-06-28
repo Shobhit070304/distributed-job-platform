@@ -44,10 +44,20 @@ export async function getJobStats(): Promise<JobStats> {
           AND updated_at > now() - interval '1 hour')  AS completed_last_hour,
         COUNT(*) FILTER (WHERE status = 'completed'
           AND updated_at > now() - interval '24 hours') AS completed_last_24h,
-        COUNT(*) FILTER (WHERE status IN ('failed', 'dead_letter')
-          AND updated_at > now() - interval '1 hour')  AS failed_last_hour,
-        COUNT(*) FILTER (WHERE status IN ('failed', 'dead_letter')
-          AND updated_at > now() - interval '24 hours') AS failed_last_24h
+        COUNT(*) FILTER (
+          WHERE updated_at > now() - interval '1 hour'
+            AND (
+              status = 'dead_letter'
+              OR (status = 'pending' AND attempts > 0 AND last_error IS NOT NULL)
+            )
+        ) AS failed_last_hour,
+        COUNT(*) FILTER (
+          WHERE updated_at > now() - interval '24 hours'
+            AND (
+              status = 'dead_letter'
+              OR (status = 'pending' AND attempts > 0 AND last_error IS NOT NULL)
+            )
+        ) AS failed_last_24h
        FROM jobs`
         ),
 
@@ -57,11 +67,12 @@ export async function getJobStats(): Promise<JobStats> {
             total_terminal: string;
         }>(
             `SELECT
-        AVG(EXTRACT(EPOCH FROM (updated_at - created_at))) AS avg_seconds,
+        AVG(EXTRACT(EPOCH FROM (updated_at - started_at))) AS avg_seconds,
         COUNT(*) FILTER (WHERE status = 'completed')        AS total_completed,
         COUNT(*) FILTER (WHERE status IN ('completed', 'dead_letter')) AS total_terminal
        FROM jobs
-       WHERE status IN ('completed', 'dead_letter')`
+       WHERE status IN ('completed', 'dead_letter')
+         AND started_at IS NOT NULL`
         ),
 
         pool.query<{ count: string; oldest: string | null }>(

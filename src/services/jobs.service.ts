@@ -34,7 +34,7 @@ export async function getJobById(id: string): Promise<Job | null> {
 export async function claimNextPendingJob(): Promise<Job | null> {
     const result = await pool.query<Job>(
         `UPDATE jobs
-     SET status = 'processing', updated_at = now()
+     SET status = 'processing', updated_at = now(), started_at = now()
      WHERE id = (
        SELECT id FROM jobs
        WHERE status = 'pending' AND available_at <= now()
@@ -45,7 +45,6 @@ export async function claimNextPendingJob(): Promise<Job | null> {
      RETURNING *`
     );
     return result.rows[0] ?? null;
-
 }
 
 export async function markJobCompleted(id: string): Promise<void> {
@@ -193,4 +192,33 @@ export async function listJobs(options: ListJobsOptions = {}): Promise<{ jobs: J
         jobs: dataResult.rows,
         total: parseInt(countResult.rows[0].count, 10),
     };
+}
+
+
+// ── Bug 3 Fix: Orphaned Job Reaper ──────────────────────────────────────────
+// Jobs stuck in 'processing' for longer than STALE_JOB_TIMEOUT_MINUTES are
+// considered orphaned — the worker that claimed them crashed or was killed.
+// This function resets them to 'pending' so another worker can retry them.
+const STALE_JOB_TIMEOUT_MINUTES = 10;
+
+export async function cleanOrphanedJobs(): Promise<number> {
+    const result = await pool.query(
+        `UPDATE jobs
+         SET
+           status     = 'pending',
+           attempts   = attempts + 1,
+           last_error = 'Worker crashed or was killed during execution. Job reset by reaper.',
+           started_at = NULL,
+           updated_at = now()
+         WHERE status = 'processing'
+           AND updated_at < now() - ($1 || ' minutes')::interval
+         RETURNING id`,
+        [STALE_JOB_TIMEOUT_MINUTES]
+    );
+
+    const count = result.rowCount ?? 0;
+    if (count > 0) {
+        console.log(`[reaper] Reset ${count} orphaned processing job(s) back to pending.`);
+    }
+    return count;
 }
