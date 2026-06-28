@@ -29,6 +29,10 @@ export async function listJobsHandler(req: Request, res: Response) {
             return res.status(400).json({ error: '"limit" must be between 1 and 100' });
         }
 
+        if (offset < 0 || isNaN(offset)) {
+            return res.status(400).json({ error: '"offset" must be a non-negative integer' });
+        }
+
         const { jobs, total } = await listJobs({ status, limit, offset });
         return res.status(200).json({
             data: jobs,

@@ -203,22 +203,43 @@ const STALE_JOB_TIMEOUT_MINUTES = 10;
 
 export async function cleanOrphanedJobs(): Promise<number> {
     const result = await pool.query(
+        // Bug Fix: Check if attempts + 1 >= max_attempts. If true, move the job
+        // to 'dead_letter' instead of 'pending' to prevent poison-pill jobs
+        // from causing infinite crash loops across worker restarts.
         `UPDATE jobs
          SET
-           status     = 'pending',
+           status = CASE 
+                      WHEN attempts + 1 >= max_attempts THEN 'dead_letter'::varchar
+                      ELSE 'pending'::varchar
+                    END,
+           dead_lettered_at = CASE 
+                                WHEN attempts + 1 >= max_attempts THEN now()
+                                ELSE dead_lettered_at
+                              END,
            attempts   = attempts + 1,
-           last_error = 'Worker crashed or was killed during execution. Job reset by reaper.',
+           last_error = CASE 
+                          WHEN attempts + 1 >= max_attempts THEN 'Worker crashed or was killed. Max attempts exhausted.'
+                          ELSE 'Worker crashed or was killed during execution. Job reset by reaper.'
+                        END,
            started_at = NULL,
            updated_at = now()
          WHERE status = 'processing'
            AND updated_at < now() - ($1 || ' minutes')::interval
-         RETURNING id`,
+         RETURNING id, status`,
         [STALE_JOB_TIMEOUT_MINUTES]
     );
 
     const count = result.rowCount ?? 0;
     if (count > 0) {
-        console.log(`[reaper] Reset ${count} orphaned processing job(s) back to pending.`);
+        const deadLettered = result.rows.filter(r => r.status === 'dead_letter').length;
+        const resetPending = count - deadLettered;
+        
+        if (resetPending > 0) {
+            console.log(`[reaper] Reset ${resetPending} orphaned processing job(s) back to pending.`);
+        }
+        if (deadLettered > 0) {
+            console.log(`[reaper] Marked ${deadLettered} orphaned job(s) as dead_letter (exhausted attempts).`);
+        }
     }
     return count;
 }
