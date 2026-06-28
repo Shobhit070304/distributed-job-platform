@@ -1,18 +1,22 @@
-# Distributed Job Processing Platform
+# RelayX - Distributed Job Processing Platform
 
-A production-style background job processing system built with **Node.js, TypeScript, PostgreSQL, and Docker**. 
+RelayX is a production-style background job processing system built with **Node.js, TypeScript, PostgreSQL, and Redis (Docker)**. 
 
 Think of it as a lightweight version of BullMQ or AWS SQS — built from scratch to understand the mechanics rather than abstract them away.
 
 ## Features
 
 - **Job Queue API** — Submit jobs with type + arbitrary JSON payload
-- **Concurrent Workers** — Multiple worker processes safely claim jobs using `SELECT FOR UPDATE SKIP LOCKED` (zero duplicate processing)
+- **Concurrent Workers** — Multiple stateless worker processes safely claim jobs using `SELECT FOR UPDATE SKIP LOCKED` (zero duplicate processing)
+- **High-Throughput Concurrency** — Run multiple jobs concurrently inside a single worker process up to a configurable limit (`WORKER_CONCURRENCY`)
+- **Recursive Polling Scheduler** — Uses self-pacing recursive timeouts (rather than overlapping intervals) to prevent double-claiming and polling pile-ups
+- **Fast Pickup Optimization** — Instantly schedules subsequent polls (0ms delay) upon slot availability, eliminating idle time
+- **Asynchronous Graceful Drain** — Intercepts termination signals (`SIGTERM`/`SIGINT`), blocks new claims, and drains active jobs before closing connection pools
 - **Exponential Backoff Retries** — Failed jobs retry with growing delays + jitter to prevent thundering herd
 - **Delayed / Scheduled Jobs** — Submit jobs with a `delay_seconds` or exact `run_at` timestamp
-- **Dead Letter Queue** — Jobs that exhaust all retries land in a DLQ with full API for listing, retrying, and discarding
+- **Dead Letter Queue (DLQ)** — Jobs that exhaust all retries land in a DLQ with a full API for listing, retrying, and discarding
 - **Monitoring Dashboard** — Live web UI with real-time job counts, throughput, success rates, and DLQ alerts
-- **Docker Setup** — Full multi-container setup with health checks, restart policies, and graceful shutdown
+- **Docker Setup** — Full multi-container setup with health checks, restart policies, and pre-packaged DB migrations
 
 ## Architecture
 
